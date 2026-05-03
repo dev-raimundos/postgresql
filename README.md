@@ -10,27 +10,32 @@ Este repositório contém a configuração completa para subir o **PostgreSQL 17
 
 Diferente do setup de HDD, esta configuração aproveita as características do SSD para extrair mais desempenho do banco — ajustando o comportamento do planner de queries, paralelismo e I/O para refletir a realidade do armazenamento.
 
+O banco é acessível remotamente por outros servidores da mesma VPN Tailscale, com acesso controlado via `pg_hba.conf`.
+
 ---
 
 ## Arquitetura
 
 ```
-Aplicação / Cliente
-        │
-        │  :5432
-        ▼
-┌──────────────────────────────┐
-│        PostgreSQL 17         │  ← banco de dados
-│                              │
-│  postgres-custom.conf        │  ← tunning aplicado na inicialização
-└──────────────────────────────┘
-        │
-        │  volume local
-        ▼
-   ./data/
+Homelab (100.100.100.100)          Nuvem (100.100.100.100)
+        │                                │
+        │         Tailscale VPN          │
+        │ ◄──────────────────────────────┤
+        │            :5432               │
+                                         ▼
+                              ┌──────────────────────────────┐
+                              │        PostgreSQL 17         │
+                              │                              │
+                              │  postgres-custom.conf        │  ← tunning
+                              │  pg_hba.conf                 │  ← controle de acesso
+                              └──────────────────────────────┘
+                                         │
+                                         │  volume local
+                                         ▼
+                                      ./data/
 ```
 
-O container expõe apenas a porta `5432` e se comunica pela rede bridge isolada `pg_net`. Os dados persistem no volume `./data` no host.
+O container escuta em todas as interfaces (`listen_addresses = '*'`) mas o `pg_hba.conf` restringe as conexões apenas ao localhost e ao IP do homelab via Tailscale. O tráfego já viaja criptografado pela VPN.
 
 ---
 
@@ -45,6 +50,12 @@ A imagem Alpine tem menos da metade do tamanho da imagem Debian padrão. Para um
 O PostgreSQL não aceita parâmetros de tuning via variáveis de ambiente — todo ajuste de performance precisa ir para um arquivo `.conf`. O compose monta o arquivo como volume e passa o caminho via `command`, sobrescrevendo as configurações padrão na inicialização.
 
 Os parâmetros padrão do Postgres são extremamente conservadores, pensados para rodar em qualquer máquina sem problemas. Em um servidor com SSD e 4 GB de RAM dedicados, isso significa deixar desempenho na mesa.
+
+### Controle de acesso (`pg_hba.conf`)
+
+O `pg_hba.conf` é o mecanismo nativo do PostgreSQL para controlar quem pode conectar ao banco. Mesmo com `listen_addresses = '*'` abrindo a escuta em todas as interfaces, o `pg_hba.conf` age como segunda camada — qualquer IP não listado é rejeitado antes mesmo de chegar à autenticação.
+
+A configuração atual libera apenas `127.0.0.1` e o IP do homelab na rede Tailscale. Para adicionar outro servidor, basta incluir uma nova linha com o IP correspondente.
 
 ### Memória
 
@@ -98,6 +109,7 @@ O container só é considerado saudável quando o `pg_isready` confirma que o ba
 ├── .env                      # credenciais (não versionar)
 ├── .env.example              # modelo sem valores reais (pode versionar)
 ├── postgres-custom.conf      # tunning do PostgreSQL para SSD
+├── pg_hba.conf               # controle de acesso por IP
 └── data/                     # volume de dados (gerado em runtime)
 ```
 
@@ -113,23 +125,46 @@ DB_USER=pg_user
 DB_PASSWORD=M1nhaSenhaSegura!
 ```
 
-**2. Suba a stack**
+**2. Ajuste o IP permitido no `pg_hba.conf`**
+
+Edite a linha com o IP do cliente que vai conectar remotamente:
+
+```
+host    all       all   SEU_IP_TAILSCALE/32    md5
+```
+
+**3. Crie os arquivos de configuração antes de subir**
+
+O Docker monta arquivo→arquivo apenas se o arquivo já existir no host. Crie com LF garantido:
+
+```bash
+printf '...' > postgres-custom.conf
+printf '...' > pg_hba.conf
+```
+
+**4. Suba a stack**
 
 ```bash
 docker compose up -d
 ```
 
-**3. Verifique o status**
+**5. Verifique o status**
 
 ```bash
 docker compose ps
 docker compose logs -f
 ```
 
-**4. Conecte ao banco**
+**6. Conecte ao banco localmente**
 
 ```bash
 docker exec -it postgres17 psql -U $DB_USER -d $DB_NAME
+```
+
+**7. String de conexão remota (via Tailscale)**
+
+```
+postgresql://DB_USER:DB_PASSWORD@100.100.100.100:5432/DB_NAME
 ```
 
 ---
@@ -139,13 +174,16 @@ docker exec -it postgres17 psql -U $DB_USER -d $DB_NAME
 - Docker Engine 24+
 - Docker Compose v2
 - Porta 5432 livre no host
+- Tailscale instalado e autenticado em ambos os servidores
 
 ---
 
 ## Notas de segurança
 
 - O arquivo `.env` **nunca** deve ser commitado no Git.
-- Por padrão, a porta `5432` fica exposta no host. Em produção, considere remover o mapeamento de porta e deixar apenas aplicações na mesma rede Docker acessarem o banco diretamente.
+- `listen_addresses = '*'` abre a escuta em todas as interfaces, mas o `pg_hba.conf` garante que apenas IPs autorizados conseguem autenticar.
+- O tráfego entre os servidores já viaja criptografado pelo Tailscale — não é necessário configurar SSL adicional no PostgreSQL para essa topologia.
+- Para adicionar um novo servidor ao acesso, inclua o IP dele no `pg_hba.conf` e reinicie o container.
 
 ---
 
