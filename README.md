@@ -108,7 +108,7 @@ O container só é considerado saudável quando o `pg_isready` confirma que o ba
 ├── compose.yaml              # definição do serviço
 ├── .env                      # credenciais (não versionar)
 ├── .env.example              # modelo sem valores reais (pode versionar)
-├── postgres-custom.conf      # tunning do PostgreSQL para NVMe SSD
+├── postgres.conf             # tunning do PostgreSQL para NVMe SSD
 ├── pg_hba.conf               # controle de acesso por IP
 └── data/                     # volume de dados (gerado em runtime)
 ```
