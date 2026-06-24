@@ -14,12 +14,28 @@ services:
 
     volumes:
       - ./data:/var/lib/postgresql/data
-      - ./postgres.conf:/etc/postgresql/postgresql.conf:ro
       - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
 
     command: >
       postgres
-      -c config_file=/etc/postgresql/postgresql.conf
+      -c shared_buffers=1536MB
+      -c effective_cache_size=4608MB
+      -c work_mem=64MB
+      -c maintenance_work_mem=512MB
+      -c max_worker_processes=2
+      -c max_parallel_workers=2
+      -c max_parallel_workers_per_gather=1
+      -c random_page_cost=1.0
+      -c effective_io_concurrency=400
+      -c wal_buffers=32MB
+      -c checkpoint_completion_target=0.9
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_connections=100
+      -c log_min_duration_statement=1000
+      -c log_timezone=America/Sao_Paulo
+      -c timezone=America/Sao_Paulo
+      -c listen_addresses=*
       -c hba_file=/etc/postgresql/pg_hba.conf
 
     deploy:
