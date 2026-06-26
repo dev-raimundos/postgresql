@@ -31,7 +31,7 @@ tasks:
     cmd: docker exec -it {{.CONTAINER}} psql -U $DB_USER -d $DB_NAME
 
   backup:
-    desc: Gera dump do banco em backups uso task backup
+    desc: "Gera dump do banco em ./backups/ (uso: task backup)"
     cmds:
       - mkdir -p backups
       - sh -c 'docker exec {{.CONTAINER}} pg_dump -U $DB_USER $DB_NAME > backups/$(date +%Y%m%d_%H%M%S)_$DB_NAME.sql'
