@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
 
     ports:
-      - "5432:5432"
+      - "100.100.10.1:5432:5432"
 
     environment:
       POSTGRES_DB: "${DB_NAME}"
@@ -35,7 +35,7 @@ services:
       -c log_min_duration_statement=1000
       -c log_timezone=America/Sao_Paulo
       -c timezone=America/Sao_Paulo
-      -c listen_addresses=*
+      -c listen_addresses=100.100.10.1
 
     deploy:
       resources:
