@@ -1,0 +1,55 @@
+version: "3"
+
+dotenv: [".env"]
+
+vars:
+  CONTAINER: postgres17
+
+tasks:
+  up:
+    desc: Sobe o banco em background
+    cmd: docker compose up -d
+
+  down:
+    desc: Para e remove o container
+    cmd: docker compose down
+
+  restart:
+    desc: Reinicia o container
+    cmd: docker compose restart postgres
+
+  logs:
+    desc: Acompanha os logs em tempo real
+    cmd: docker compose logs -f postgres
+
+  ps:
+    desc: Mostra o status do container
+    cmd: docker compose ps
+
+  psql:
+    desc: Abre o shell psql no banco
+    cmd: docker exec -it {{.CONTAINER}} psql -U $DB_USER -d $DB_NAME
+
+  backup:
+    desc: Gera dump do banco em backups uso task backup
+    cmds:
+      - mkdir -p backups
+      - sh -c 'docker exec {{.CONTAINER}} pg_dump -U $DB_USER $DB_NAME > backups/$(date +%Y%m%d_%H%M%S)_$DB_NAME.sql'
+      - echo "Backup salvo em backups/"
+
+  restore:
+    desc: "Restaura dump (uso: task restore FILE=backups/arquivo.sql)"
+    preconditions:
+      - sh: test -n "{{.FILE}}"
+        msg: "Informe o arquivo: task restore FILE=backups/arquivo.sql"
+    cmd: sh -c 'docker exec -i {{.CONTAINER}} psql -U $DB_USER -d $DB_NAME < {{.FILE}}'
+
+  reset:
+    desc: Apaga todos os dados e reinicia o banco do zero
+    preconditions:
+      - sh: "[ \"$CONFIRM\" = \"yes\" ]"
+        msg: "Execute com CONFIRM=yes para confirmar: task reset CONFIRM=yes"
+    cmds:
+      - docker compose down
+      - rm -rf ./data
+      - docker compose up -d
