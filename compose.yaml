@@ -51,13 +51,3 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-    networks:
-      - pg_net
-      - coolify
-
-networks:
-  pg_net:
-    driver: bridge
-  coolify:
-    external: true

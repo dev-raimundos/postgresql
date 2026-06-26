@@ -10,7 +10,7 @@ Este repositório contém a configuração completa para subir o **PostgreSQL 17
 
 A configuração aproveita as características do NVMe SSD para extrair desempenho máximo do banco — ajustando o comportamento do planner de queries, paralelismo e I/O para refletir a realidade do armazenamento. Com 6 GB de RAM disponíveis, a alocação de buffers e memória de trabalho também é mais generosa.
 
-O banco é acessível remotamente por outros servidores da mesma VPN Tailscale, com acesso controlado via `pg_hba.conf`.
+O banco é acessível remotamente por outros servidores da mesma VPN Tailscale. O controle de acesso é feito pelo Tailscale — qualquer dispositivo autenticado na VPN pode se conectar.
 
 ---
 
@@ -26,8 +26,8 @@ Homelab (100.100.100.100)          Nuvem (100.100.100.100)
                               ┌──────────────────────────────┐
                               │        PostgreSQL 17         │
                               │                              │
-                              │  postgres-custom.conf        │  ← tunning
-                              │  pg_hba.conf                 │  ← controle de acesso
+                              │  parâmetros via -c flags     │  ← tunning
+                              │  POSTGRES_HOST_AUTH_METHOD   │  ← controle de acesso
                               └──────────────────────────────┘
                                          │
                                          │  volume local
@@ -35,7 +35,7 @@ Homelab (100.100.100.100)          Nuvem (100.100.100.100)
                                       ./data/
 ```
 
-O container escuta em todas as interfaces (`listen_addresses = '*'`) mas o `pg_hba.conf` restringe as conexões apenas ao localhost e ao IP do homelab via Tailscale. O tráfego já viaja criptografado pela VPN.
+O container escuta em todas as interfaces (`listen_addresses = '*'`). O perímetro de segurança é a própria VPN — quem não está no Tailscale não chega à porta 5432.
 
 ---
 
@@ -45,17 +45,15 @@ O container escuta em todas as interfaces (`listen_addresses = '*'`) mas o `pg_h
 
 A imagem Alpine tem menos da metade do tamanho da imagem Debian padrão. Para um banco de dados em homelab onde o container raramente precisa de ferramentas extras, ela é a escolha mais enxuta sem abrir mão de nenhuma funcionalidade do PostgreSQL.
 
-### Arquivo de configuração (`postgres-custom.conf`)
+### Parâmetros de configuração (flags `-c`)
 
-O PostgreSQL não aceita parâmetros de tuning via variáveis de ambiente — todo ajuste de performance precisa ir para um arquivo `.conf`. O compose monta o arquivo como volume e passa o caminho via `command`, sobrescrevendo as configurações padrão na inicialização.
+Os parâmetros de tuning são passados diretamente via flags `-c` no `command` do compose, sem depender de arquivos `.conf` montados como volume. Isso torna o deploy simples e sem dependências de arquivos no host.
 
 Os parâmetros padrão do Postgres são extremamente conservadores, pensados para rodar em qualquer máquina sem problemas. Em um servidor com NVMe SSD e 6 GB de RAM dedicados, isso significa deixar desempenho na mesa.
 
-### Controle de acesso (`pg_hba.conf`)
+### Controle de acesso (`POSTGRES_HOST_AUTH_METHOD`)
 
-O `pg_hba.conf` é o mecanismo nativo do PostgreSQL para controlar quem pode conectar ao banco. Mesmo com `listen_addresses = '*'` abrindo a escuta em todas as interfaces, o `pg_hba.conf` age como segunda camada.
-
-A configuração atual libera `127.0.0.1` e toda a subnet do Tailscale (`100.64.0.0/10`). Qualquer dispositivo autenticado na VPN pode se conectar ao banco — o controle de acesso é feito pelo Tailscale, não por IP individual.
+A variável `POSTGRES_HOST_AUTH_METHOD=md5` instrui a imagem oficial a gerar um `pg_hba.conf` que aceita conexões de qualquer host com autenticação por senha. O controle de quem pode alcançar o banco é feito pelo Tailscale — não por IP individual no pg_hba.
 
 ### Memória
 
@@ -108,8 +106,6 @@ O container só é considerado saudável quando o `pg_isready` confirma que o ba
 ├── compose.yaml              # definição do serviço
 ├── .env                      # credenciais (não versionar)
 ├── .env.example              # modelo sem valores reais (pode versionar)
-├── postgres.conf             # tunning do PostgreSQL para NVMe SSD
-├── pg_hba.conf               # controle de acesso por IP
 └── data/                     # volume de dados (gerado em runtime)
 ```
 
@@ -119,41 +115,34 @@ O container só é considerado saudável quando o `pg_isready` confirma que o ba
 
 **1. Configure as credenciais**
 
+Copie `.env.example` para `.env` e preencha:
+
 ```bash
 DB_NAME=meu_banco
 DB_USER=pg_user
 DB_PASSWORD=M1nhaSenhaSegura!
 ```
 
-**2. Crie os arquivos de configuração antes de subir**
-
-O Docker monta arquivo→arquivo apenas se o arquivo já existir no host. Crie com LF garantido:
-
-```bash
-printf '...' > postgres-custom.conf
-printf '...' > pg_hba.conf
-```
-
-**4. Suba a stack**
+**2. Suba a stack**
 
 ```bash
 docker compose up -d
 ```
 
-**5. Verifique o status**
+**3. Verifique o status**
 
 ```bash
 docker compose ps
 docker compose logs -f
 ```
 
-**6. Conecte ao banco localmente**
+**4. Conecte ao banco localmente**
 
 ```bash
 docker exec -it postgres17 psql -U $DB_USER -d $DB_NAME
 ```
 
-**7. String de conexão remota (via Tailscale)**
+**5. String de conexão remota (via Tailscale)**
 
 ```
 postgresql://DB_USER:DB_PASSWORD@100.100.100.100:5432/DB_NAME
@@ -173,6 +162,5 @@ postgresql://DB_USER:DB_PASSWORD@100.100.100.100:5432/DB_NAME
 ## Notas de segurança
 
 - O arquivo `.env` **nunca** deve ser commitado no Git.
-- `listen_addresses = '*'` abre a escuta em todas as interfaces, mas o `pg_hba.conf` garante que apenas IPs autorizados conseguem autenticar.
+- `listen_addresses = '*'` abre a escuta em todas as interfaces — o perímetro é o Tailscale, não o pg_hba.
 - O tráfego entre os servidores já viaja criptografado pelo Tailscale — não é necessário configurar SSL adicional no PostgreSQL para essa topologia.
-- Qualquer dispositivo autenticado no Tailscale consegue se conectar ao banco. O perímetro de segurança é a própria VPN.
