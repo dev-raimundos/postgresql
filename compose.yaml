@@ -14,7 +14,7 @@ services:
       POSTGRES_HOST_AUTH_METHOD: "md5"
 
     volumes:
-      - ./data:/var/lib/postgresql/data
+      - /home/docker-data/postgres17:/var/lib/postgresql/data
 
     command: >
       postgres
