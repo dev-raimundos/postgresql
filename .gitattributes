@@ -1,0 +1,2 @@
+pg_hba.conf text eol=lf
+postgres.conf text eol=lf

@@ -1,6 +1,6 @@
 # PostgreSQL 17 — Homelab Stack
 
-> Stack Docker para banco de dados PostgreSQL 17, otimizada para NVMe SSD com 6 GB de RAM.
+> Stack Docker para banco de dados PostgreSQL 17, otimizada para NVMe SSD com 8 GB de RAM.
 
 ---
 
@@ -8,9 +8,9 @@
 
 Este repositório contém a configuração completa para subir o **PostgreSQL 17** via Docker Compose em um servidor doméstico. A imagem utilizada é a variante **Alpine**, mais leve que a oficial padrão e adequada para um ambiente de homelab.
 
-A configuração aproveita as características do NVMe SSD para extrair desempenho máximo do banco — ajustando o comportamento do planner de queries, paralelismo e I/O para refletir a realidade do armazenamento. Com 6 GB de RAM disponíveis, a alocação de buffers e memória de trabalho também é mais generosa.
+A configuração aproveita as características do NVMe SSD para extrair desempenho máximo do banco — ajustando o comportamento do planner de queries, paralelismo e I/O para refletir a realidade do armazenamento. Com 8 GB de RAM disponíveis, a alocação de buffers e memória de trabalho também é mais generosa.
 
-O banco é acessível remotamente por outros servidores da mesma VPN Tailscale. O controle de acesso é feito pelo Tailscale — qualquer dispositivo autenticado na VPN pode se conectar.
+O banco é acessível remotamente por outros servidores da mesma VPN Tailscale. O acesso é restrito em duas camadas: a porta só é publicada na interface do Tailscale (nunca em `0.0.0.0`) e o `pg_hba.conf` só autentica conexões vindas da faixa `100.64.0.0/10` (a subnet do Tailscale).
 
 ---
 
@@ -27,7 +27,7 @@ Homelab (100.100.100.100)          Nuvem (100.100.100.100)
                               │        PostgreSQL 17         │
                               │                              │
                               │  parâmetros via -c flags     │  ← tunning
-                              │  POSTGRES_HOST_AUTH_METHOD   │  ← controle de acesso
+                              │  pg_hba.conf (100.64.0.0/10) │  ← controle de acesso
                               └──────────────────────────────┘
                                          │
                                          │  volume local
@@ -35,7 +35,7 @@ Homelab (100.100.100.100)          Nuvem (100.100.100.100)
                                       ./data/
 ```
 
-O container escuta em todas as interfaces (`listen_addresses = '*'`). O perímetro de segurança é a própria VPN — quem não está no Tailscale não chega à porta 5432.
+Internamente o container escuta em todas as interfaces (`listen_addresses = '*'`), mas isso é irrelevante para a exposição externa: o Docker só publica a porta 5432 no IP Tailscale do host (`${TAILSCALE_IP}`, via `.env`), e o `pg_hba.conf` (montado via `hba_file`) só autentica conexões vindas de `100.64.0.0/10`. Quem não está no Tailscale não alcança a porta; quem alcança mas não está nessa faixa de IP é rejeitado antes da autenticação.
 
 ---
 
@@ -49,24 +49,31 @@ A imagem Alpine tem menos da metade do tamanho da imagem Debian padrão. Para um
 
 Os parâmetros de tuning são passados diretamente via flags `-c` no `command` do compose, sem depender de arquivos `.conf` montados como volume. Isso torna o deploy simples e sem dependências de arquivos no host.
 
-Os parâmetros padrão do Postgres são extremamente conservadores, pensados para rodar em qualquer máquina sem problemas. Em um servidor com NVMe SSD e 6 GB de RAM dedicados, isso significa deixar desempenho na mesa.
+Os parâmetros padrão do Postgres são extremamente conservadores, pensados para rodar em qualquer máquina sem problemas. Em um servidor com NVMe SSD e 8 GB de RAM dedicados, isso significa deixar desempenho na mesa.
 
-### Controle de acesso (`POSTGRES_HOST_AUTH_METHOD`)
+### Controle de acesso (porta + `pg_hba.conf`)
 
-A variável `POSTGRES_HOST_AUTH_METHOD=md5` instrui a imagem oficial a gerar um `pg_hba.conf` que aceita conexões de qualquer host com autenticação por senha. O controle de quem pode alcançar o banco é feito pelo Tailscale — não por IP individual no pg_hba.
+O acesso é controlado em duas camadas independentes:
+
+1. **Porta (`compose.yaml`)** — o Docker só publica a porta 5432 no IP do Tailscale (`${TAILSCALE_IP}`, lido do `.env`), nunca em `0.0.0.0`. Um IP fixo no compose só funcionaria neste host; usar a variável mantém o arquivo portátil entre servidores diferentes.
+2. **`pg_hba.conf`** — montado como volume read-only e apontado explicitamente via `-c hba_file=/etc/postgresql/pg_hba.conf` (montar direto em `$PGDATA` seria sobrescrito pelo `initdb` na primeira subida). A regra `host all all 100.64.0.0/10 md5` restringe a autenticação à subnet inteira do Tailscale — qualquer dispositivo do tailnet pode conectar, mas nada fora dele passa da checagem de IP.
+
+`POSTGRES_HOST_AUTH_METHOD=md5` continua definida só para o `pg_hba.conf` autogerado no primeiro `initdb`, antes do `hba_file` assumir; na prática quem manda é o arquivo montado.
+
+> **Por que não `127.0.0.1`?** Bindar a porta em loopback só aceitaria conexões originadas da própria máquina — quebraria justamente o acesso remoto via Tailscale que é o objetivo do stack. A interface `tailscale0` já é uma NIC virtual isolada dentro do túnel WireGuard do tailnet; bindar nela é o equivalente seguro ao `0.0.0.0`, sem depender de proxy e sem abrir nada para fora do tailnet.
 
 ### Memória
 
-**`shared_buffers = 1536MB`**
-Cache de páginas principal do PostgreSQL. A recomendação clássica é 25% da RAM disponível. Com 6 GB, chegamos a 1536 MB. O restante fica para o cache do SO, que o Postgres também aproveita indiretamente pelo `effective_cache_size`.
+**`shared_buffers = 2048MB`**
+Cache de páginas principal do PostgreSQL. A recomendação clássica é 25% da RAM disponível. Com 8 GB, chegamos a 2048 MB. O restante fica para o cache do SO, que o Postgres também aproveita indiretamente pelo `effective_cache_size`.
 
-**`effective_cache_size = 4608MB`**
-Não aloca memória — é uma dica para o planner de queries estimar o quanto de cache está disponível no sistema como um todo. Configurado em 75% da RAM (4608 MB), faz o planner preferir index scans ao invés de sequential scans com muito mais agressividade.
+**`effective_cache_size = 6144MB`**
+Não aloca memória — é uma dica para o planner de queries estimar o quanto de cache está disponível no sistema como um todo. Configurado em 75% da RAM (6144 MB), faz o planner preferir index scans ao invés de sequential scans com muito mais agressividade.
 
 **`work_mem = 64MB`**
 Memória por operação de sort ou hash. Atenção: esse valor é *por operação*, não por conexão. Com muitas conexões concorrentes fazendo sorts simultâneos, o consumo real pode multiplicar. Reduza se a aplicação for muito concorrente.
 
-**`maintenance_work_mem = 512MB`**
+**`maintenance_work_mem = 768MB`**
 Memória para operações de manutenção como `VACUUM`, `ANALYZE` e `CREATE INDEX`. Valores maiores aceleram essas operações sem impactar queries normais.
 
 ### I/O para NVMe SSD
@@ -104,8 +111,10 @@ O container só é considerado saudável quando o `pg_isready` confirma que o ba
 ```
 .
 ├── compose.yaml              # definição do serviço
-├── .env                      # credenciais (não versionar)
+├── .env                      # credenciais + IP Tailscale do host (não versionar)
 ├── .env.example              # modelo sem valores reais (pode versionar)
+├── pg_hba.conf               # controle de acesso por IP (montado via hba_file)
+├── .gitattributes            # força LF em pg_hba.conf (evita CRLF quebrar o parser em checkout Windows)
 └── data/                     # volume de dados (gerado em runtime)
 ```
 
@@ -121,6 +130,7 @@ Copie `.env.example` para `.env` e preencha:
 DB_NAME=meu_banco
 DB_USER=pg_user
 DB_PASSWORD=M1nhaSenhaSegura!
+TAILSCALE_IP=100.x.x.x   # `tailscale ip -4` rodado neste host
 ```
 
 **2. Suba a stack**
@@ -161,6 +171,7 @@ postgresql://DB_USER:DB_PASSWORD@100.100.100.100:5432/DB_NAME
 
 ## Notas de segurança
 
-- O arquivo `.env` **nunca** deve ser commitado no Git.
-- `listen_addresses = '*'` abre a escuta em todas as interfaces — o perímetro é o Tailscale, não o pg_hba.
+- O arquivo `.env` **nunca** deve ser commitado no Git (guarda senha e IP Tailscale do host).
+- `listen_addresses = '*'` é inofensivo isoladamente: quem decide a exposição real é o bind de porta no Docker (`${TAILSCALE_IP}`, nunca `0.0.0.0`) somado ao `pg_hba.conf` (restrito a `100.64.0.0/10`).
 - O tráfego entre os servidores já viaja criptografado pelo Tailscale — não é necessário configurar SSL adicional no PostgreSQL para essa topologia.
+- `pg_hba.conf` precisa ter fim de linha LF; o `.gitattributes` do repo garante isso mesmo em checkout no Windows (CRLF faz o parser de autenticação do Postgres falhar).
