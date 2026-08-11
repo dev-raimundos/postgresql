@@ -12,6 +12,8 @@ A configuração reflete o hardware real do host: um **HD mecânico** (não SSD/
 
 O volume de dados é montado em `/home/docker-data/postgres18`, porque neste host a partição `/home` é quem tem o espaço (`/` tem ~70 GiB, `/home` tem ~856 GiB) — é lá que o crescimento do banco tem lugar para acontecer.
 
+A partir do PostgreSQL 18, a imagem oficial passou a esperar um único mount em `/var/lib/postgresql` (não mais direto em `/var/lib/postgresql/data`) — os dados ficam numa subpasta com o nome da major version (`18/docker`), pensada para permitir `pg_upgrade --link` sem cruzar limite de mount point em upgrades futuros. Montar direto em `.../data` faz a imagem 18 recusar a inicializar.
+
 O banco é acessível remotamente por outros servidores da mesma VPN Tailscale. O acesso é restrito em duas camadas: a porta só é publicada na interface do Tailscale (nunca em `0.0.0.0`) e o `pg_hba.conf` só autentica conexões vindas da faixa `100.100.0.0/16` (os IPs privados do próprio tailnet).
 
 ---
@@ -130,7 +132,7 @@ O container só é considerado saudável quando o `pg_isready` confirma que o ba
 └── .gitattributes            # força LF em pg_hba.conf (evita CRLF quebrar o parser em checkout Windows)
 ```
 
-O volume de dados **não** fica dentro do repositório — ele é montado direto de `/home/docker-data/postgres18` no host, porque é a partição `/home` que tem espaço disponível neste servidor (ver [Hardware do host](#hardware-do-host)).
+O volume de dados **não** fica dentro do repositório — ele é montado direto de `/home/docker-data/postgres18` no host (em `/var/lib/postgresql` no container, com os arquivos reais em `18/docker/` dentro disso — layout exigido pela imagem a partir do Postgres 18), porque é a partição `/home` que tem espaço disponível neste servidor (ver [Hardware do host](#hardware-do-host)).
 
 ---
 
