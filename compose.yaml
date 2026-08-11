@@ -19,16 +19,16 @@ services:
 
     command: >
       postgres
-      -c shared_buffers=3584MB
-      -c effective_cache_size=10752MB
-      -c work_mem=64MB
-      -c maintenance_work_mem=1024MB
+      -c shared_buffers=2048MB
+      -c effective_cache_size=6144MB
+      -c work_mem=16MB
+      -c maintenance_work_mem=512MB
       -c max_worker_processes=2
       -c max_parallel_workers=2
       -c max_parallel_workers_per_gather=1
       -c random_page_cost=4.0
       -c effective_io_concurrency=2
-      -c wal_buffers=64MB
+      -c wal_buffers=32MB
       -c checkpoint_completion_target=0.9
       -c min_wal_size=1GB
       -c max_wal_size=4GB
@@ -42,7 +42,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 14G
+          memory: 8G
         reservations:
           memory: 2G
 
