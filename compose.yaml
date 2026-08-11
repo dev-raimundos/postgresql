@@ -1,7 +1,7 @@
 services:
   postgres:
-    image: postgres:17-alpine
-    container_name: postgres17
+    image: postgres:18-alpine
+    container_name: postgres18
     restart: unless-stopped
 
     ports:
@@ -14,21 +14,21 @@ services:
       POSTGRES_HOST_AUTH_METHOD: "md5"
 
     volumes:
-      - /home/docker-data/postgres17:/var/lib/postgresql/data
+      - /home/docker-data/postgres18:/var/lib/postgresql/data
       - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
 
     command: >
       postgres
-      -c shared_buffers=2048MB
-      -c effective_cache_size=6144MB
+      -c shared_buffers=3584MB
+      -c effective_cache_size=10752MB
       -c work_mem=64MB
-      -c maintenance_work_mem=768MB
+      -c maintenance_work_mem=1024MB
       -c max_worker_processes=2
       -c max_parallel_workers=2
       -c max_parallel_workers_per_gather=1
-      -c random_page_cost=1.0
-      -c effective_io_concurrency=400
-      -c wal_buffers=32MB
+      -c random_page_cost=4.0
+      -c effective_io_concurrency=2
+      -c wal_buffers=64MB
       -c checkpoint_completion_target=0.9
       -c min_wal_size=1GB
       -c max_wal_size=4GB
@@ -42,10 +42,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2.0"
-          memory: 8G
+          memory: 14G
         reservations:
-          memory: 1G
+          memory: 2G
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
