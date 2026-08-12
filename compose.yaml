@@ -18,6 +18,7 @@ services:
 
     volumes:
       - /home/docker-data/postgres18:/var/lib/postgresql
+      - /home/docker-data/postgres18-tablespaces/neon_vertex_tbs:/var/lib/postgresql/tablespaces/neon_vertex_tbs
       - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - ./initdb:/docker-entrypoint-initdb.d:ro
 
