@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:18-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: postgres18-ext:18-alpine
     container_name: postgres18
     restart: unless-stopped
 
@@ -16,6 +19,7 @@ services:
     volumes:
       - /home/docker-data/postgres18:/var/lib/postgresql
       - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./initdb:/docker-entrypoint-initdb.d:ro
 
     command: >
       postgres
