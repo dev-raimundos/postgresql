@@ -15,6 +15,11 @@ RUN apk add --no-cache --virtual .build-deps \
     && cd system_stats \
     && make USE_PGXS=1 \
     && make USE_PGXS=1 install \
+    && cd /tmp \
+    && git clone --branch v1.6.7 --depth 1 https://github.com/citusdata/pg_cron.git \
+    && cd pg_cron \
+    && make \
+    && make install \
     && cd / \
-    && rm -rf /tmp/pgvector /tmp/system_stats \
+    && rm -rf /tmp/pgvector /tmp/system_stats /tmp/pg_cron \
     && apk del .build-deps

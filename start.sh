@@ -7,9 +7,9 @@ TABLESPACE_DIR="/home/docker-data/postgres18/tablespaces/neon_vertex_tbs"
 echo "Criando diretório do tablespace..."
 mkdir -p "$TABLESPACE_DIR"
 
-echo "Subindo containers..."
+echo "Construindo imagem e subindo containers..."
 cd "$SCRIPT_DIR"
-docker compose up -d
+docker compose up -d --build
 
 echo "Aguardando container ficar saudável..."
 until docker inspect --format='{{.State.Health.Status}}' postgres18 2>/dev/null | grep -q healthy; do
