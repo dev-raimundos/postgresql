@@ -23,3 +23,6 @@ RUN apk add --no-cache --virtual .build-deps \
     && cd / \
     && rm -rf /tmp/pgvector /tmp/system_stats /tmp/pg_cron \
     && apk del .build-deps
+
+COPY pg_hba.conf /etc/postgresql/pg_hba.conf
+COPY initdb/ /docker-entrypoint-initdb.d/
